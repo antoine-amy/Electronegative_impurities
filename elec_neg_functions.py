@@ -13,5 +13,12 @@ def tau(t, M, rho, n0, F, eta, R0, alpha, n_p): # Electron lifetime calculation
     return alpha/denominator
 
 
-def XPM_tau_fit(t, C_el, n0, R0, rho, M): # Materials tests XPM fit
-    return C_el/(n0+R0*rho*t/M)
+def XPM_tau_fit(t, C_el, n0, R0, rho, M, n0_error, R0_error): # Materials tests XPM fit
+    # Calculate the main electron lifetime
+    electron_lifetime = C_el / (n0 + R0 * rho * t / M)
+
+    # Calculate the variations due to errors
+    electron_lifetime_upper = C_el / (n0 - n0_error + (R0 - R0_error) * rho * t / M)
+    electron_lifetime_lower = C_el / (n0 + n0_error + (R0 + R0_error) * rho * t / M)
+    
+    return electron_lifetime, electron_lifetime_lower, electron_lifetime_upper
