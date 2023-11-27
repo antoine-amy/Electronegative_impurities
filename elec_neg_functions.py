@@ -3,6 +3,9 @@ import scipy.constants as sc
 
 # Constants
 
+def ideal_gas_law(N, T):
+    return N*sc.k*T
+
 
 def arrhenius(D0, Ea, T):
     """
@@ -98,7 +101,7 @@ def steel_desorption(tau0, E, T, q0, t):
     return J
 
 
-def plastics_outgassing(c0, D0, Ea, T, d, t, max_iter=1000):
+def plastics_outgassing_old(c0, D0, Ea, T, d, t, max_iter=1000):
     """
     Computes the plastic outgassing rate using the diffusion equation solution. From "Outgassing Model for Electronegative Impurites in Liquid Xenon for nEXO" 26-02-2020.
     
@@ -121,38 +124,84 @@ def plastics_outgassing(c0, D0, Ea, T, d, t, max_iter=1000):
     J *= (4 * c0 * D) / d
     return J
 
-
-def plastics_outgassing_approximation(c0, D0, Ea, T, t, d=None, mode='short'):
+def plastics_outgassing(c0, D0, Ea, T, d, t, surface_area=1.0, max_iter=1000):
     """
-    Compute the plastic outgassing rate using either the short or long time approximation. From "Outgassing Model for Electronegative Impurites in Liquid Xenon for nEXO" 26-02-2020.
+    Computes the plastic outgassing rate using the diffusion equation solution.
 
     Parameters:
-    - c0: in ppb, initial gas concentration in the sample CHECK UNIT!!!
-    - D0: in cm2.s-1, diffusion constant at infinite temperature
-    - Ea: in Joules, activation energy
-    - T: in Kelvin, temperature
-    - t: in seconds, time
-    - d: in mm, thickness, required for the 'long' mode
-    - mode: either 'short' or 'long' to specify the approximation to use
+    - c0: Initial gas concentration in the sample (ppb).
+    - D0: Diffusion constant at infinite temperature (cm^2/s).
+    - Ea: Activation energy (Joules).
+    - T: Temperature (Kelvin).
+    - d: Thickness of the sample (cm).
+    - t: Time (seconds).
+    - surface_area: Surface area of the material (cm^2). Defaults to 1.0.
+    - convert_to_mbar: Convert the result to mBar.Liter/s. Defaults to True.
+    - max_iter: Maximum number of iterations for the summation (default is 1000).
 
     Returns:
-    - Value of the plastic outgassing rate J based on the selected approximation
+    - Outgassing rate (J) in the unit of mBar.Liter/s.
     """
-    
-    # Calculate the diffusion coefficient using the Arrhenius equation
+    if t < 0:
+        raise ValueError("Time 't' must be positive.")
+
+    J = 0
+    D = arrhenius(D0, Ea, T)
+    for n in range(max_iter):
+        term = np.exp(-(sc.pi * (2 * n + 1) / d)**2 * D * t)
+        J += term
+
+    J *= (4 * c0 * D) / d
+
+    # Convert to mBar.Liter/s if required
+    ATM_TO_MBAR = 1013.25
+    J *= ATM_TO_MBAR * surface_area
+
+    return J
+
+
+def plastics_outgassing_approximation(c0, D0, Ea, T, t, d=None, surface_area=1.0, mode='short'):
+    """
+    Compute the plastic outgassing rate using either the short or long time approximation.
+    Automatically converts the result to mBar.Liter/s if requested.
+
+    Parameters:
+    - c0: Initial gas concentration in the sample (ppb).
+    - D0: Diffusion constant at infinite temperature (cm^2/s).
+    - Ea: Activation energy (Joules).
+    - T: Temperature (Kelvin).
+    - t: Time (seconds).
+    - d: Thickness (cm), required for the 'long' mode.
+    - mode: 'short' or 'long' to specify the approximation.
+    - surface_area: Surface area of the material (cm^2). Defaults to 1.0.
+    - convert_to_mbar: Convert the result to mBar.Liter/s. Defaults to True.
+
+    Returns:
+    - Outgassing rate (J) based on the selected approximation, in the unit of mBar.Liter/s.
+    """
+    # Check for invalid inputs
+    if t < 0:
+        raise ValueError("Time 't' must be positive.")
+    if mode == 'long' and (d is None or d <= 0):
+        raise ValueError("Thickness 'd' must be specified for the 'long' mode.")
+
+    # Calculate the diffusion coefficient
     D = arrhenius(D0, Ea, T)
     
-    # Short time approximation
+    # Calculate outgassing rate
     if mode == 'short':
+        if t == 0:
+            return None
         J = c0 * np.sqrt(D / t)
-    
-    # Long time approximation
     elif mode == 'long':
-        if d is None:
-            raise ValueError("Thickness 'd' must be specified for the 'long' mode.")
+        if d == 0:
+            return None
         J = (4 * c0 * D / d) * np.exp(-(sc.pi / d)**2 * D * t)
     
-    else:
-        raise ValueError("Invalid mode. Choose either 'short' or 'long'.")
-    
+    # Convert to mBar.Liter/s
+    ATM_TO_MBAR = 1013.25
+    J *= ATM_TO_MBAR * surface_area
+
     return J
+
+
