@@ -101,29 +101,6 @@ def steel_desorption(tau0, E, T, q0, t):
     return J
 
 
-def plastics_outgassing_old(c0, D0, Ea, T, d, t, max_iter=1000):
-    """
-    Computes the plastic outgassing rate using the diffusion equation solution. From "Outgassing Model for Electronegative Impurites in Liquid Xenon for nEXO" 26-02-2020.
-    
-    Parameters:
-    - c0: 
-    - D: 
-    - d: in mm, thickness of the sample
-    - t: in seconds, time
-    - max_iter: maximum number of iterations for the summation (default is 1000)
-    
-    Returns:
-    - Value of the plastic outgassing rate J
-    """
-    J = 0
-    D=arrhenius(D0, Ea, T)
-    for n in range(max_iter):
-        term = np.exp(-(sc.pi * (2*n + 1) / d)**2 * D * t)
-        J += term
-    
-    J *= (4 * c0 * D) / d
-    return J
-
 def plastics_outgassing(c0, D0, Ea, T, d, t, surface_area=1.0, max_iter=1000):
     """
     Computes the plastic outgassing rate using the diffusion equation solution.
@@ -192,7 +169,7 @@ def plastics_outgassing_approximation(c0, D0, Ea, T, t, d=None, surface_area=1.0
     if mode == 'short':
         if t == 0:
             return None
-        J = c0 * np.sqrt(D / t)
+        J = (c0 * np.sqrt(D))/(np.sqrt(sc.pi)*np.sqrt(t))
     elif mode == 'long':
         if d == 0:
             return None
