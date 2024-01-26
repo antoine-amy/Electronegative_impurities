@@ -1,11 +1,62 @@
+"""Module providing computing functions."""
 import numpy as np
 import scipy.constants as sc
+import library as Lib
 
 # Constants
 IDEAL_GAS_MOLAR_VOLUME = 22.4  # liter/mol
 AVOGADRO_NUMBER = 6.022E23  # particles/mol
 BOLTZMANN_CONSTANT_EV = 8.6173303E-5  # eV/K
 BOLTZMANN_CONSTANT_L = 83.14  # mBar*Liter/(mol*K)
+
+class System:
+    """
+    This class represents a system with various attributes and methods.
+
+    Attributes:
+    name (str): The name of the setup.
+    material (str): The material of the system.
+    solute (str): The solute in the system.
+    version (str): The version of the system.
+    constraints (list): The constraints of the system.
+    constraint_index (list): The index of the constraints.
+    diffusion (float): The diffusion constant of the solute in the material.
+    solubility (float): The solubility of the solute in the material.
+    activation_energy (float): The activation energy of the solute in the material.
+    abundance (float): The abundance of the solute in the air.
+    molar_mass (float): The molar mass of the solute.
+    xe_mass (float): The mass of Xenon in the system.
+    volume (float): The volume of the system.
+    area (float): The area of the system.
+    thickness (float): The thickness of the system.
+    """
+
+    def __init__(self, setup, material, solute, version):
+        self.name = setup
+        self.material = material
+        self.solute = solute
+        self.version = version
+
+        self.constraints = []
+        self.constraint_index = []
+
+        self.diffusion = Lib.Material.get(material).get(solute).get('Diffusion Constant')
+        self.solubility = Lib.Material.get(material).get(solute).get('Solubility')
+        self.activation_energy = Lib.Material.get(material).get(solute).get('Activation Energy')
+        self.abundance = Lib.Gas.get(solute).get('Abundance in Air')
+        self.molar_mass = Lib.Gas.get(solute).get('Molar Mass')
+
+        self.xe_mass = Lib.System.get(setup).get('Xenon Mass')
+        self.volume = Lib.System.get(setup).get(material).get(version).get('Volume')
+        self.area = Lib.System.get(setup).get(material).get(version).get('Area')
+        self.thickness = Lib.System.get(setup).get(material).get(version).get('Thickness')
+
+    def print_attributes(self):
+        """
+        This method prints the attributes of the system.
+        """
+        attributes = vars(self)
+        print('\n'.join(f"{item}: {attributes[item]}" for item in attributes))
 
 
 def ideal_gas_law(N, T):
@@ -48,22 +99,30 @@ def get_parts_conversion(units):
     }
     return unit_conversions.get(units, "Invalid unit")
 
+def get_time_stamps(points, spacing, time_scale):
+    x = []
+    for ii in range(len(points) - 1):
+        time = np.linspace(points[ii], points[ii + 1], int((points[ii + 1] - points[ii]) / spacing + 1))
+        x.append(time)
+    return x
+
 #########################################################################################
 #these 2 functions do the same thing, only left one that is more general in output
 
 def get_diff_temp(data, temperatures):
     """
-    Calculate the diffusion temperature difference.
+    Calculate the diffusion constant at given temperatures.
 
     Args:
-    data (object): Data object containing Diffusion and ActivationEnergy attributes.
-    temperatures (list): List of temperatures for calculation.
+    data (object): Data object containing the diffusion constant at room temperature (in in cm2.s-1)
+                    and the activation energy (in Joules) attributes.
+    temperatures (list): List of temperatures in Kelvin for calculation.
 
     Returns:
-    ndarray: Array of diffusion temperature differences.
+    ndarray: Array of diffusion coefficient at given temperatures.
     """
     return [
-        data.Diffusion * np.exp(data.ActivationEnergy
+        data.diffusion * np.exp(data.activation_energy
                                 / BOLTZMANN_CONSTANT_EV * ((1.0 / 293.15) - (1.0 / temp)))
         for temp in temperatures
     ]
@@ -96,13 +155,13 @@ def get_initial_impurities(data, units):
     Returns:
     float: The calculated initial impurities in the specified unit.
     """
-    impurity_volume = data.Volume * data.Solubility * data.Abundance
-    impurity_mass = impurity_volume / IDEAL_GAS_MOLAR_VOLUME * data.MolarMass
+    impurity_volume = data.volume * data.solubility * data.abundance
+    impurity_mass = impurity_volume / IDEAL_GAS_MOLAR_VOLUME * data.molar_mass
 
     if 'pp' in units:
-        impurity_mass = impurity_mass / data.XeMass * get_parts_conversion(units)
+        impurity_mass = impurity_mass / data.xe_mass * get_parts_conversion(units)
     elif units == '#':
-        impurity_mass = impurity_mass / data.MolarMass * AVOGADRO_NUMBER
+        impurity_mass = impurity_mass / data.molar_mass * AVOGADRO_NUMBER
 
     return impurity_mass
 
@@ -203,45 +262,11 @@ def plastics_outgassing(c0, D0, Ea, T, d, t, surface_area=1.0, max_iter=1000):
 
     J = 0
     D = arrhenius(D0, Ea, T)
-    for n in range(max_iter):
-        term = np.exp(-(sc.pi * (2 * n + 1) / d)**2 * D * t)
-        J += term
-    
-    J *= (4 * c0 * D) / d
-
-    # Convert to mBar.Liter/s if required
-    ATM_TO_MBAR = 1013.25
-    J *= ATM_TO_MBAR * surface_area
-    return J
-
-def plastics_outgassing_tests(c0, D0, Ea, T, d, t, surface_area=1.0, max_iter=1000):
-    """
-    Computes the plastic outgassing rate using the diffusion equation solution.
-
-    Parameters:
-    - c0: Initial gas concentration in the sample (ppb).
-    - D0: Diffusion constant at infinite temperature (cm^2/s).
-    - Ea: Activation energy (Joules).
-    - T: Temperature (Kelvin).
-    - d: Thickness of the sample (cm).
-    - t: Time (seconds).
-    - surface_area: Surface area of the material (cm^2). Defaults to 1.0.
-    - convert_to_mbar: Convert the result to mBar.Liter/s. Defaults to True.
-    - max_iter: Maximum number of iterations for the summation (default is 1000).
-
-    Returns:
-    - Outgassing rate (J) in the unit of mBar.Liter/s.
-    """
-    if t < 0:
-        raise ValueError("Time 't' must be positive.")
-
-    J = 0
-    D = arrhenius(D0, Ea, T)
     print(D)
     for n in range(max_iter):
         term = np.exp(-(sc.pi * (2 * n + 1) / d)**2 * D * t)
         J += term
-    
+
 
     J *= (4 * c0 * D) / d
     R = J*sc.k*273*surface_area
@@ -277,7 +302,7 @@ def plastics_outgassing_approximation(c0, D0, Ea, T, t, d=None, surface_area=1.0
 
     # Calculate the diffusion coefficient
     D = arrhenius(D0, Ea, T)
-    
+
     # Calculate outgassing rate
     if mode == 'short':
         if t == 0:
@@ -287,7 +312,7 @@ def plastics_outgassing_approximation(c0, D0, Ea, T, t, d=None, surface_area=1.0
         if d == 0:
             return None
         J = (4 * c0 * D / d) * np.exp(-(sc.pi / d)**2 * D * t)
-    
+
     # Convert to mBar.Liter/s
     ATM_TO_MBAR = 1013.25
     J *= ATM_TO_MBAR * surface_area
@@ -350,23 +375,23 @@ def get_impurities_vs_time(data, time_scale='Seconds'):
     ndarray: Array of impurities over time.
     """
     impurities = []
-    initial_impurities = data.InitialImpurities
+    initial_impurities = data.initial_impurities
 
-    for ii, diff_constant in enumerate(data.DiffConstants):
-        time_segment = np.array(data.Time[ii])
+    for ii, diff_constant in enumerate(data.diffusion_constants):
+        time_segment = np.array(data.time[ii])
         if ii > 0:
-            time_segment -= np.max(data.Time[ii - 1])
+            time_segment -= np.max(data.time[ii - 1])
 
         diff_constant *= do_time_conversion(time_scale)
         y = solve_diffusion_equation(time_segment, diff_constant,
-                                    data.Thickness, initial_impurities)
+                                    data.thickness, initial_impurities)
 
-        if ii < len(data.Constraints):
-            y_index = np.where(y < y[0] / data.Constraints[ii])[0]
+        if ii < len(data.constraints):
+            y_index = np.where(y < y[0] / data.constraints[ii])[0]
             if len(y_index) > 0:
                 y_index = y_index[0]
-                y[y_index:] = y[0] / data.Constraints[ii]
-                data.ConstraintIndex.append(y_index)
+                y[y_index:] = y[0] / data.constraints[ii]
+                data.constraint_index.append(y_index)
 
         impurities.append(y)
         initial_impurities = y[-1]
@@ -392,18 +417,18 @@ def get_flow_rate_vs_time(data, units='#', time_scale='Seconds'):
     ndarray: Array of flow rates over time.
     """
     flow_rate = []
-    initial_concentration = [x[0] / (data.Volume * 1E3) for x in data.Impurities]
+    initial_concentration = [x[0] / (data.volume * 1E3) for x in data.impurities]
 
-    for ii, (time, diff_constant) in enumerate(zip(data.Time, data.DiffConstants)):
+    for ii, (time, diff_constant) in enumerate(zip(data.time, data.diffusion_constants)):
         if ii > 0:
-            time = time - np.max(data.Time[ii - 1])
+            time = time - np.max(data.time[ii - 1])
 
         diff_constant *= do_time_conversion(time_scale)
-        y = get_flow_rate(time, diff_constant, data.Thickness, initial_concentration[ii], data.Area)
+        y = get_flow_rate(time, diff_constant, data.thickness, initial_concentration[ii], data.area)
         y /= do_time_conversion(time_scale)
 
-        if ii < len(data.ConstraintIndex):
-            y_index = data.ConstraintIndex[ii]
+        if ii < len(data.constraint_index):
+            y_index = data.constraint_index[ii]
             y_frac = int(y_index // 2.0)
             x_index = np.linspace(0, len(y[y_index // 3:]), len(y[y_frac:]))
             y[y_frac:] = y[y_frac] * np.exp(-0.7E-2 * x_index) + y[y_index]
@@ -412,6 +437,70 @@ def get_flow_rate_vs_time(data, units='#', time_scale='Seconds'):
 
     if units == 'mBar Liter':
         for ii, y in enumerate(flow_rate):
-            flow_rate[ii] = y * (BOLTZMANN_CONSTANT_L * data.Temp[ii]) / AVOGADRO_NUMBER
+            flow_rate[ii] = y * (BOLTZMANN_CONSTANT_L * data.temperatures[ii]) / AVOGADRO_NUMBER
 
     return np.asarray(flow_rate)
+
+def do_modelling(systems, labels, temperature, time, time_scale, constraints=None):
+    """
+    This function performs modelling for a given set of systems.
+
+    Parameters:
+    systems (list): List of systems.
+    labels (list): List of labels for the systems.
+    temperature (list): List of temperatures.
+    time (float): Time for the modelling.
+    time_scale (str): Time scale for the modelling.
+    constraints (list, optional): List of constraints for the systems. Defaults to None.
+
+    Returns:
+    None
+    """
+    if constraints is None:
+        constraints = []
+
+    for i, system in enumerate(systems):
+        # Define the different temperatures for which to calculate outgassing
+        system.temperatures = temperature
+
+        # Calculate the diffusion constants for the above temperatures using the Arrhenius equation
+        system.diffusion_constants = get_diff_temp(system, temperatures=system.temperatures)
+
+        # Get the initial number of impurities from model parameters.
+        # Can define '#', 'ppm,ppb,ppt' or 'Mass' for units
+        system.initial_impurities = get_initial_impurities(system, '#')
+
+        # Forward above defined labels, that will be later used for the plot legend.
+        system.labels = labels[i]
+
+        system.time = time
+        if len(constraints) > i:
+            system.constraints = constraints[i]
+
+        # Calculate impurities left in the sample vs time using the diffusion equation.
+        system.impurities = get_impurities_vs_time(data=system, time_scale=time_scale)
+
+        # Calculate the outgassing rate vs time using Fick's 1st law
+        system.flow_rate = get_flow_rate_vs_time(data=system,
+                                                 units='mBar Liter', time_scale=time_scale)
+
+
+def get_labels(systems, temperature):
+    """
+    This function generates labels for a given set of systems and temperatures.
+
+    Parameters:
+    systems (list): List of systems.
+    temperature (list): List of temperatures.
+
+    Returns:
+    labels (list): List of labels for each system at each temperature.
+    """
+    labels = []
+    for system in systems:
+        label = []
+        for temp in temperature:
+            label.append(rf'{system.version}, $ d= {system.thickness} \, \mathrm{{cm}}, \, T = {
+                temp} \, \mathrm{{K}}, \, E_a = {system.activation_energy}\,\mathrm{{eV}}$')
+        labels.append(label)
+    return labels

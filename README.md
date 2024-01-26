@@ -8,6 +8,8 @@ This project delves into detailed studies concerning electronegative impurities,
 
 - `elec_neg_functions.py`: This Python script contains various functions that are used within the notebook. These functions perform calculations, data processing, and analysis related to electronegative impurities.
 
+- `libray.py`: This Python file contains all the various data values that are used within the python functions and the notebook. These values are coming from multiple published papers for the most part of them, and are specified.
+
 ## Getting Started
 
 To get started with the project, you need to have Jupyter Notebook installed, preferably through the Anaconda distribution which provides Jupyter and other useful scientific Python libraries pre-installed.
@@ -19,9 +21,9 @@ To get started with the project, you need to have Jupyter Notebook installed, pr
 
 ## Prerequisites
 
-- Python 3.x
+- Python 3.12 (older versions may not work properly)
 - Jupyter Notebook
-- Necessary Python libraries: numpy, matplotlib
+- Necessary Python libraries: numpy, matplotlib...
 
 ## How to Use
 
@@ -43,4 +45,4 @@ This file contains multiple utility functions used in the analysis. Each functio
 
 ## Acknowledgments
 
-- Ako Jamil, David Moore & the nEXO collaboration
+- Ako Jamil, David Moore, Sierra Wilde & the nEXO collaboration

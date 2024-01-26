@@ -1,10 +1,12 @@
+"""Module providing experimental data."""
+
 # Diffusion constant given in cm^2/s
-# Solubility given as fraction 
-# Activation energy given in eV 
-# Mass given in gram 
+# Solubility given as fraction
+# Activation energy given in eV
+# Mass given in gram
 # Volume given in liter
 # Surface area given in cm^2
-# Thickness given in cm 
+# Thickness given in cm
 # Molar mass  given in g/mol
 
 Material = {
@@ -37,7 +39,7 @@ Material = {
     },
     'Kapton':{
         'Oxygen':{'Diffusion Constant': 31.4E-8, 'Solubility': 0.22, 'Activation Energy': 0.17}
-    },  
+    },
     'Kapton Yale':{
         'Oxygen':{'Diffusion Constant': 31.4E-8, 'Solubility': 0.22, 'Activation Energy': 0.47}
     }
@@ -75,7 +77,8 @@ System = {
         'Teflon':{
                 'EXO-Teflon': {'Volume': 5.3E-3, 'Area': pow(5.5*2.54, 2)*2, 'Thickness': 0.15},
                 'Stock-Teflon': {'Volume': 0.01639, 'Area': pow(4*2.54, 2)*2, 'Thickness': 0.635},
-                'Stock-Teflon Thick': {'Volume': 0.093*1, 'Area': 45.6*2 + 48.64*1, 'Thickness': 2.03},
+                'Stock-Teflon Thick': {'Volume': 0.093*1, 'Area': 45.6*2 + 48.64*1,
+                                        'Thickness': 2.03},
                 'Columbia-Teflon': {'Volume': 285.08, 'Area': (17.8*15.4)*2, 'Thickness': 1.04}
         }
     },
