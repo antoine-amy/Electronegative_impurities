@@ -23,7 +23,7 @@ To get started with the project, you need to have Jupyter Notebook installed, pr
 
 - Python 3.12 (older versions may not work properly)
 - Jupyter Notebook
-- Necessary Python libraries: numpy, matplotlib...
+- Necessary Python libraries (can be downloaded using `pip install -r requirements.txt`)
 
 ## How to Use
 

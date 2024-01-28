@@ -31,7 +31,7 @@ class System:
     thickness (float): The thickness of the system.
     """
 
-    def __init__(self, setup, material, solute, version):
+    def __init__(self, setup, material=None, solute=None, version=None):
         self.name = setup
         self.material = material
         self.solute = solute
@@ -57,10 +57,6 @@ class System:
         """
         attributes = vars(self)
         print('\n'.join(f"{item}: {attributes[item]}" for item in attributes))
-
-
-def ideal_gas_law(N, T):
-    return N*sc.k*T
 
 def do_time_conversion(time_scale):
     """
@@ -100,11 +96,27 @@ def get_parts_conversion(units):
     return unit_conversions.get(units, "Invalid unit")
 
 def get_time_stamps(points, spacing, time_scale):
-    x = []
-    for ii in range(len(points) - 1):
-        time = np.linspace(points[ii], points[ii + 1], int((points[ii + 1] - points[ii]) / spacing + 1))
-        x.append(time)
-    return x
+    """
+    Generate time stamps between given points with specified spacing.
+
+    Args:
+        points (list): List of points in time.
+        spacing (float): The spacing between time stamps.
+        time_scale (str): The time scale used.
+
+    Returns:
+        list: List of time stamps.
+    """
+    time_stamps = []
+    for i in range(len(points) - 1):
+        time = np.linspace(
+            points[i],
+            points[i + 1],
+            int((points[i + 1] - points[i]) / spacing + 1)
+        )
+        time_stamps.append(time)
+    return time_stamps
+
 
 #########################################################################################
 #these 2 functions do the same thing, only left one that is more general in output
@@ -141,6 +153,21 @@ def arrhenius(D0, Ea, T):
     - Diffusion coefficient D
     """
     return D0 * np.exp(Ea/sc.k * ((1.0/293.15) - (1.0/T)))
+
+def arrhenius_old(D0, Ea, T):
+    """
+    Calculate the diffusion coefficient using the Arrhenius equation.
+    From "Outgassing Model for Electronegative Impurites in Liquid Xenon for nEXO" 26-02-2020.
+    
+    Parameters:
+    - D0: in cm2.s-1, diffusion constant at infinite temperature
+    - Ea: in Joules, activation energy
+    - T: in Kelvin, temperature
+    
+    Returns:
+    - Diffusion coefficient D
+    """
+    return D0 * np.exp(-Ea / (sc.k * T))
 
 #########################################################################################
 
@@ -261,19 +288,18 @@ def plastics_outgassing(c0, D0, Ea, T, d, t, surface_area=1.0, max_iter=1000):
         raise ValueError("Time 't' must be positive.")
 
     J = 0
-    D = arrhenius(D0, Ea, T)
-    print(D)
+    D = arrhenius_old(D0, Ea, T)
     for n in range(max_iter):
         term = np.exp(-(sc.pi * (2 * n + 1) / d)**2 * D * t)
         J += term
 
 
     J *= (4 * c0 * D) / d
-    R = J*sc.k*273*surface_area
+    # R = J*sc.k*273*surface_area
     # Convert to mBar.Liter/s if required
-    #ATM_TO_MBAR = 1013.25
-    #J *= ATM_TO_MBAR * surface_area
-    return R
+    ATM_TO_MBAR = 1013.25
+    J *= ATM_TO_MBAR * surface_area
+    return J
 
 def plastics_outgassing_approximation(c0, D0, Ea, T, t, d=None, surface_area=1.0, mode='short'):
     """
@@ -301,7 +327,7 @@ def plastics_outgassing_approximation(c0, D0, Ea, T, t, d=None, surface_area=1.0
         raise ValueError("Thickness 'd' must be specified for the 'long' mode.")
 
     # Calculate the diffusion coefficient
-    D = arrhenius(D0, Ea, T)
+    D = arrhenius_old(D0, Ea, T)
 
     # Calculate outgassing rate
     if mode == 'short':

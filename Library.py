@@ -8,6 +8,7 @@
 # Surface area given in cm^2
 # Thickness given in cm
 # Molar mass  given in g/mol
+# Alpha in ms, field dependant factor
 
 Material = {
     'Teflon':{  # http://arxiv.org/abs/1703.09144
@@ -48,6 +49,7 @@ Material = {
 System = {
     'EXO-200':{
         'Xenon Mass': 200000,
+        'alpha': 0.3,
         'Teflon':{
                 'EXO-Teflon': {'Volume': 0.693, 'Area': 9200.0, 'Thickness': 0.15},
                 'EXO-Acrylic': {'Volume': 0.693, 'Area': 9200.0, 'Thickness': 2.0}
