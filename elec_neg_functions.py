@@ -95,27 +95,37 @@ def get_parts_conversion(units):
     }
     return unit_conversions.get(units, "Invalid unit")
 
-def get_time_stamps(points, spacing, time_scale):
+def get_time_stamps(points, spacing, time_scale='Seconds'):
     """
-    Generate time stamps between given points with specified spacing.
+    Generate a list of lists containing timestamps in seconds.
+    Each sublist represents the range from one point to the next,
+    incremented by the given spacing value.
 
     Args:
-        points (list): List of points in time.
-        spacing (float): The spacing between time stamps.
-        time_scale (str): The time scale used.
+    points (list of float): Time points, in the specified time scale, between which timestamps are generated.
+    spacing (float): Increment value in seconds.
+    time_scale (str, optional): Unit of time for points ('Days', 'Hours', 'Seconds'). Defaults to 'Seconds'.
 
     Returns:
-        list: List of time stamps.
+    list of list of float: Lists of timestamps in seconds.
     """
-    time_stamps = []
-    for i in range(len(points) - 1):
-        time = np.linspace(
-            points[i],
-            points[i + 1],
-            int((points[i + 1] - points[i]) / spacing + 1)
-        )
-        time_stamps.append(time)
-    return time_stamps
+    scale_factors = {'Days': 86400, 'Hours': 3600, 'Seconds': 1}
+
+    if time_scale not in scale_factors:
+        raise ValueError("Unsupported time scale. Choose from 'Days', 'Hours', or 'Seconds'.")
+
+    converted_points = [point * scale_factors[time_scale] for point in points]
+
+    timestamps = []
+    for start_point, end_point in zip(converted_points, converted_points[1:]):
+        current_time = start_point
+        time_segment = []
+        while current_time < end_point:
+            time_segment.append(current_time)
+            current_time += spacing * scale_factors[time_scale]
+        timestamps.append(time_segment)
+
+    return timestamps
 
 
 #########################################################################################
@@ -383,52 +393,47 @@ def get_flow_rate(time, diff, thickness, conc, area):
     terms = [
         np.exp(-(np.pi * (2.0 * n + 1.0) / thickness) ** 2 * diff * time)
                                     * (4.0 * conc * diff) / thickness
-        for n in range(3)
+        for n in range(1000)
     ]
     return sum(terms) * area
 
-def get_impurities_vs_time(data, time_scale='Seconds'):
+def get_impurities_vs_time(data):
     """
     Calculate the impurities over time considering diffusion constants and constraints.
 
     Args:
-    data (object): Data object containing InitialImpurities,
-                                    DiffConstants, Time, Thickness, and Constraints.
-    time_scale (str): Time scale for the diffusion equation ('Seconds',
-                                    'Minutes', 'Hours', 'Days', 'Weeks').
+    data (object): Data object containing initial_impurities, diffusion_constants,
+                   time (nested lists of timestamps), thickness, and constraints.
 
     Returns:
-    ndarray: Array of impurities over time.
+    list of lists: Nested lists of impurities corresponding to each time segment.
     """
     impurities = []
     initial_impurities = data.initial_impurities
+    print("initial impurities=", initial_impurities)
+    # Use the same time segment for all diffusion constants if data.time has only one sublist
+    if len(data.time) == 1:
+        time_segments = [data.time[0] for _ in data.diffusion_constants]
+    else:
+        time_segments = data.time
 
-    for ii, diff_constant in enumerate(data.diffusion_constants):
-        time_segment = np.array(data.time[ii])
-        if ii > 0:
-            time_segment -= np.max(data.time[ii - 1])
+    # Iterate over each set of time segments
+    for diff_constant, time_segment in zip(data.diffusion_constants, time_segments):
+        segment_impurities = []
 
-        diff_constant *= do_time_conversion(time_scale)
-        y = solve_diffusion_equation(time_segment, diff_constant,
-                                    data.thickness, initial_impurities)
+        # Calculate impurities for each timestamp in the segment
+        for timestamp in time_segment:
+            y = solve_diffusion_equation(np.array([timestamp]), diff_constant,
+                                         data.thickness, initial_impurities)
+            # Update initial impurities for the next timestamp
+            initial_impurities = y[-1]
+            segment_impurities.append(initial_impurities)
 
-        if ii < len(data.constraints):
-            y_index = np.where(y < y[0] / data.constraints[ii])[0]
-            if len(y_index) > 0:
-                y_index = y_index[0]
-                y[y_index:] = y[0] / data.constraints[ii]
-                data.constraint_index.append(y_index)
+        impurities.append(segment_impurities)
 
-        impurities.append(y)
-        initial_impurities = y[-1]
+    return impurities
 
-    # Adjusting impurities for subsequent time segments
-    for ii in range(1, len(impurities)):
-        impurities[ii] *= impurities[ii - 1][-1] / impurities[ii][0]
-
-    return np.array(impurities)
-
-def get_flow_rate_vs_time(data, units='#', time_scale='Seconds'):
+def get_flow_rate_vs_time(data, units='#'):
     """
     Calculate the flow rate over time considering diffusion constants and constraints.
 
@@ -440,32 +445,28 @@ def get_flow_rate_vs_time(data, units='#', time_scale='Seconds'):
                                 'Minutes', 'Hours', 'Days', 'Weeks').
 
     Returns:
-    ndarray: Array of flow rates over time.
+    list of lists: Nested lists of flow rates corresponding to each time segment.
     """
     flow_rate = []
     initial_concentration = [x[0] / (data.volume * 1E3) for x in data.impurities]
+    print("initial concentration=", initial_concentration)
+    # Iterate over each set of time segments
+    for diff_constant, temp, time_segment in zip(data.diffusion_constants, data.temperatures, data.time):
+        segment_flow_rates = []
 
-    for ii, (time, diff_constant) in enumerate(zip(data.time, data.diffusion_constants)):
-        if ii > 0:
-            time = time - np.max(data.time[ii - 1])
+        # Process each timestamp within the segment
+        for timestamp in time_segment:
+            y = get_flow_rate(timestamp, diff_constant, data.thickness, initial_concentration[0], data.area)
 
-        diff_constant *= do_time_conversion(time_scale)
-        y = get_flow_rate(time, diff_constant, data.thickness, initial_concentration[ii], data.area)
-        y /= do_time_conversion(time_scale)
+            if units == 'mBar Liter':
+                y *= (BOLTZMANN_CONSTANT_L * temp) / AVOGADRO_NUMBER
 
-        if ii < len(data.constraint_index):
-            y_index = data.constraint_index[ii]
-            y_frac = int(y_index // 2.0)
-            x_index = np.linspace(0, len(y[y_index // 3:]), len(y[y_frac:]))
-            y[y_frac:] = y[y_frac] * np.exp(-0.7E-2 * x_index) + y[y_index]
+            segment_flow_rates.append(y)
 
-        flow_rate.append(y)
+        flow_rate.append(segment_flow_rates)
 
-    if units == 'mBar Liter':
-        for ii, y in enumerate(flow_rate):
-            flow_rate[ii] = y * (BOLTZMANN_CONSTANT_L * data.temperatures[ii]) / AVOGADRO_NUMBER
-
-    return np.asarray(flow_rate)
+    print(len(flow_rate))
+    return flow_rate
 
 def do_modelling(systems, labels, temperature, time, time_scale, constraints=None):
     """
@@ -504,11 +505,10 @@ def do_modelling(systems, labels, temperature, time, time_scale, constraints=Non
             system.constraints = constraints[i]
 
         # Calculate impurities left in the sample vs time using the diffusion equation.
-        system.impurities = get_impurities_vs_time(data=system, time_scale=time_scale)
+        system.impurities = get_impurities_vs_time(data=system)
 
         # Calculate the outgassing rate vs time using Fick's 1st law
-        system.flow_rate = get_flow_rate_vs_time(data=system,
-                                                 units='mBar Liter', time_scale=time_scale)
+        system.flow_rate = get_flow_rate_vs_time(data=system, units='mBar Liter')
 
 
 def get_labels(systems, temperature):
