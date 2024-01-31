@@ -198,7 +198,7 @@ def get_initial_impurities(data, units):
     if 'pp' in units:
         impurity_mass = impurity_mass / data.xe_mass * get_parts_conversion(units)
     elif units == '#':
-        impurity_mass = impurity_mass / data.molar_mass * AVOGADRO_NUMBER
+        impurity_mass = (impurity_mass / data.molar_mass) * AVOGADRO_NUMBER
 
     return impurity_mass
 
@@ -410,7 +410,6 @@ def get_impurities_vs_time(data):
     """
     impurities = []
     initial_impurities = data.initial_impurities
-    print("initial impurities=", initial_impurities)
     # Use the same time segment for all diffusion constants if data.time has only one sublist
     if len(data.time) == 1:
         time_segments = [data.time[0] for _ in data.diffusion_constants]
@@ -450,6 +449,9 @@ def get_flow_rate_vs_time(data, units='#'):
     flow_rate = []
     initial_concentration = [x[0] / (data.volume * 1E3) for x in data.impurities]
     print("initial concentration=", initial_concentration)
+    print("diff constans=", data.diffusion_constants)
+    print("Area=", data.area)
+    print("Temp=", data.temperatures)
     # Iterate over each set of time segments
     for diff_constant, temp, time_segment in zip(data.diffusion_constants, data.temperatures, data.time):
         segment_flow_rates = []
@@ -464,8 +466,6 @@ def get_flow_rate_vs_time(data, units='#'):
             segment_flow_rates.append(y)
 
         flow_rate.append(segment_flow_rates)
-
-    print(len(flow_rate))
     return flow_rate
 
 def do_modelling(systems, labels, temperature, time, time_scale, constraints=None):

@@ -8,7 +8,6 @@
 # Surface area given in cm^2
 # Thickness given in cm
 # Molar mass  given in g/mol
-# Alpha in ms, field dependant factor
 
 Material = {
     'Teflon':{  # http://arxiv.org/abs/1703.09144
