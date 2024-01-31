@@ -200,7 +200,7 @@ def get_initial_impurities(data, units):
     elif units == '#':
         impurity_mass = (impurity_mass / data.molar_mass) * AVOGADRO_NUMBER
 
-    return impurity_mass
+    return impurity_mass/1e9
 
 def electron_lifetime(t, M, rho, n0, F, eta, R0, alpha, n_p=0):
     """
@@ -419,7 +419,8 @@ def get_impurities_vs_time(data):
     # Iterate over each set of time segments
     for diff_constant, time_segment in zip(data.diffusion_constants, time_segments):
         segment_impurities = []
-
+        if len(data.time) == 1:
+            initial_impurities = data.initial_impurities
         # Calculate impurities for each timestamp in the segment
         for timestamp in time_segment:
             y = solve_diffusion_equation(np.array([timestamp]), diff_constant,
@@ -448,12 +449,14 @@ def get_flow_rate_vs_time(data, units='#'):
     """
     flow_rate = []
     initial_concentration = [x[0] / (data.volume * 1E3) for x in data.impurities]
-    print("initial concentration=", initial_concentration)
-    print("diff constans=", data.diffusion_constants)
-    print("Area=", data.area)
-    print("Temp=", data.temperatures)
+    # Use the same time segment for all diffusion constants if data.time has only one sublist
+    if len(data.time) == 1:
+        time_segments = [data.time[0] for _ in data.diffusion_constants]
+    else:
+        time_segments = data.time
     # Iterate over each set of time segments
-    for diff_constant, temp, time_segment in zip(data.diffusion_constants, data.temperatures, data.time):
+    for diff_constant, temp, time_segment in zip(data.diffusion_constants, data.temperatures, time_segments):
+
         segment_flow_rates = []
 
         # Process each timestamp within the segment
