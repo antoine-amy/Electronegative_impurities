@@ -8,6 +8,7 @@ IDEAL_GAS_MOLAR_VOLUME = 22.4  # liter/mol
 AVOGADRO_NUMBER = 6.022E23  # particles/mol
 BOLTZMANN_CONSTANT_EV = 8.6173303E-5  # eV/K
 BOLTZMANN_CONSTANT_L = 83.14  # mBar*Liter/(mol*K)
+T0 = 2600 # seconds
 
 class System:
     """
@@ -200,7 +201,7 @@ def get_initial_impurities(data, units):
     elif units == '#':
         impurity_mass = (impurity_mass / data.molar_mass) * AVOGADRO_NUMBER
 
-    return impurity_mass/1e9
+    return impurity_mass#/1e9 #dividing by 1e9 for testing
 
 def electron_lifetime(t, M, rho, n0, F, eta, R0, alpha, n_p=0):
     """
