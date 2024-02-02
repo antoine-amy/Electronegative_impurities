@@ -284,6 +284,22 @@ def get_time_stamps(points, spacing, time_scale="Seconds"):
     return timestamps
 
 
+def arrhenius_old(D0, Ea, T):
+    """
+    Calculate the diffusion coefficient using the Arrhenius equation.
+    From "Outgassing Model for Electronegative Impurites in Liquid Xenon for nEXO" 26-02-2020.
+
+    Parameters:
+    - D0: in cm2.s-1, diffusion constant at infinite temperature
+    - Ea: in Joules, activation energy
+    - T: in Kelvin, temperature
+
+    Returns:
+    - Diffusion coefficient D
+    """
+    return D0 * np.exp(-Ea / (sc.k * T))
+
+
 def electron_lifetime(t, M, rho, n0, F, eta, R0, alpha, n_p=0):
     """
     Calculate the electron lifetime.
@@ -361,3 +377,132 @@ def steel_desorption(tau0, E, T, q0, t):
     J = q0 / residence_time * np.exp(-t / residence_time)
 
     return J
+
+
+def plastics_outgassing(c0, D0, Ea, T, d, t, surface_area=1.0, max_iter=1000):
+    """
+    Computes the plastic outgassing rate using the diffusion equation solution.
+
+    Parameters:
+    - c0: Initial gas concentration in the sample (ppb).
+    - D0: Diffusion constant at infinite temperature (cm^2/s).
+    - Ea: Activation energy (Joules).
+    - T: Temperature (Kelvin).
+    - d: Thickness of the sample (cm).
+    - t: Time (seconds).
+    - surface_area: Surface area of the material (cm^2). Defaults to 1.0.
+    - convert_to_mbar: Convert the result to mBar.Liter/s. Defaults to True.
+    - max_iter: Maximum number of iterations for the summation (default is 1000).
+
+    Returns:
+    - Outgassing rate (J) in the unit of mBar.Liter/s.
+    """
+    if t < 0:
+        raise ValueError("Time 't' must be positive.")
+
+    J = 0
+    D = arrhenius_old(D0, Ea, T)
+    for n in range(max_iter):
+        term = np.exp(-((sc.pi * (2 * n + 1) / d) ** 2) * D * t)
+        J += term
+
+    J *= (4 * c0 * D) / d
+    # R = J*sc.k*273*surface_area
+    # Convert to mBar.Liter/s if required
+    ATM_TO_MBAR = 1013.25
+    J *= ATM_TO_MBAR * surface_area
+    return J
+
+
+def plastics_outgassing_approximation(
+    c0, D0, Ea, T, t, d=None, surface_area=1.0, mode="short"
+):
+    """
+    Compute the plastic outgassing rate using either the short or long time approximation.
+    Automatically converts the result to mBar.Liter/s if requested.
+
+    Parameters:
+    - c0: Initial gas concentration in the sample (ppb).
+    - D0: Diffusion constant at infinite temperature (cm^2/s).
+    - Ea: Activation energy (Joules).
+    - T: Temperature (Kelvin).
+    - t: Time (seconds).
+    - d: Thickness (cm), required for the 'long' mode.
+    - mode: 'short' or 'long' to specify the approximation.
+    - surface_area: Surface area of the material (cm^2). Defaults to 1.0.
+    - convert_to_mbar: Convert the result to mBar.Liter/s. Defaults to True.
+
+    Returns:
+    - Outgassing rate (J) based on the selected approximation, in the unit of mBar.Liter/s.
+    """
+    # Initialize J to a default value
+    J = 0
+    # Check for invalid inputs
+    if t < 0:
+        raise ValueError("Time 't' must be positive.")
+    if mode == "long" and (d is None or d <= 0):
+        raise ValueError("Thickness 'd' must be specified for the 'long' mode.")
+
+    # Calculate the diffusion coefficient
+    D = arrhenius_old(D0, Ea, T)
+
+    # Calculate outgassing rate
+    if mode == "short":
+        if t == 0:
+            return None
+        J = (c0 * np.sqrt(D)) / (np.sqrt(sc.pi) * np.sqrt(t))
+    elif mode == "long":
+        if d is None or d == 0:
+            raise ValueError(
+                "Thickness 'd' must be specified and non-zero for the 'long' mode."
+            )
+        J = (4 * c0 * D / d) * np.exp(-((sc.pi / d) ** 2) * D * t)
+
+    # Convert to mBar.Liter/s
+    ATM_TO_MBAR = 1013.25
+    J *= ATM_TO_MBAR * surface_area
+
+    return J
+
+
+def do_modelling(systems, labels, temperature, time, time_scale, constraints=None):
+    """
+    This function performs modelling for a given set of systems.
+
+    Parameters:
+    systems (list): List of systems.
+    labels (list): List of labels for the systems.
+    temperature (list): List of temperatures.
+    time (float): Time for the modelling.
+    time_scale (str): Time scale for the modelling.
+    constraints (list, optional): List of constraints for the systems. Defaults to None.
+
+    Returns:
+    None
+    """
+    if constraints is None:
+        constraints = []
+
+    for i, system in enumerate(systems):
+        # Define the different temperatures for which to calculate outgassing
+        system.temperatures = temperature
+
+        # Calculate the diffusion constants for the above temperatures using the Arrhenius equation
+        system.get_diff_temp()
+
+        # Get the initial number of impurities from model parameters.
+        # Can define '#', 'ppm,ppb,ppt' or 'Mass' for units
+        system.get_initial_impurities(units="#")
+
+        # Forward above defined labels, that will be later used for the plot legend.
+        system.labels = labels[i]
+
+        system.time = time
+        if len(constraints) > i:
+            system.constraints = constraints[i]
+
+        # Calculate impurities left in the sample vs time using the diffusion equation.
+        system.get_impurities_vs_time()
+
+        # Calculate the outgassing rate vs time using Fick's 1st law
+        system.get_flow_rate_vs_time(units="mBar Liter")
