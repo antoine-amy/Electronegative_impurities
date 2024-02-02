@@ -10,6 +10,7 @@ IDEAL_GAS_MOLAR_VOLUME = 22.4  # liter/mol
 AVOGADRO_NUMBER = 6.022e23  # particles/mol
 BOLTZMANN_CONSTANT_EV = 8.6173303e-5  # eV/K
 BOLTZMANN_CONSTANT_L = 83.14  # mBar*Liter/(mol*K)
+GXE_DENSITY = 5.5e-3  # Kg/liter
 
 
 class Outgassing_setup:
@@ -321,7 +322,7 @@ def solve_electron_lifetime(t, M, rho, n0, F, eta, R0, alpha, n_p=0):
     return alpha / denominator
 
 
-def XPM_electron_lifetime_fit(t, C_el, n0, R0, rho, M, n0_error=None, R0_error=None):
+def XPM_electron_lifetime_fit(t, C_el, n0, R0, M, n0_error=None, R0_error=None):
     """
     Calculate materials test XPM fit for electron lifetime.
     From "Screening for Electronegative Impurities".
@@ -331,7 +332,6 @@ def XPM_electron_lifetime_fit(t, C_el, n0, R0, rho, M, n0_error=None, R0_error=N
     - C_el: in ppb/μs
     - n0: in ppb, initial impurity concentration
     - R0: in ppb liter/sec, total out-diffusion rate
-    - rho: in kg/liter, LXe density
     - M: in kg, LXe mass
     - n0_error (optional): error associated with n0
     - R0_error (optional): error associated with R0
@@ -339,11 +339,15 @@ def XPM_electron_lifetime_fit(t, C_el, n0, R0, rho, M, n0_error=None, R0_error=N
     Returns:
     - Main electron lifetime, and (optionally) lower and upper bounds due to errors
     """
-    electron_lifetime = C_el / (n0 + R0 * rho * t / M)
+    electron_lifetime = C_el / (n0 + R0 * GXE_DENSITY * t / M)
 
     if n0_error is not None and R0_error is not None:
-        electron_lifetime_upper = C_el / (n0 - n0_error + (R0 - R0_error) * rho * t / M)
-        electron_lifetime_lower = C_el / (n0 + n0_error + (R0 + R0_error) * rho * t / M)
+        electron_lifetime_upper = C_el / (
+            n0 - n0_error + (R0 - R0_error) * GXE_DENSITY * t / M
+        )
+        electron_lifetime_lower = C_el / (
+            n0 + n0_error + (R0 + R0_error) * GXE_DENSITY * t / M
+        )
         return electron_lifetime, electron_lifetime_lower, electron_lifetime_upper
 
     return electron_lifetime
