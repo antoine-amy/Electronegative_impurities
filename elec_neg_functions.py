@@ -82,13 +82,19 @@ class Outgassing_setup:
         # Retrieve Xenon Mass
         self.xe_mass: Optional[float] = Lib.System.get(setup, {}).get("Xenon Mass")
 
-    def print_attributes(self) -> None:
+    def __str__(self) -> str:
         """
-        This method prints the attributes of the system.
+        Return a string representation of the system with attributes that are not None or empty.
         """
         attributes = vars(self)
-        for item in attributes:
-            print(f"{item}: {attributes[item]}")
+        non_empty_attributes = {
+            item: attributes[item]
+            for item in attributes
+            if attributes[item] not in [None, [], ""]
+        }
+        return "\n".join(
+            f"{key}: {value}" for key, value in non_empty_attributes.items()
+        )
 
     def get_diff_temp(self) -> None:
         """
@@ -198,21 +204,37 @@ class Outgassing_setup:
 
             self.flow_rates.append(segment_flow_rates)
 
+    def get_steel_flow_rate_vs_pumping_time(
+        self, unbaked_flow_rate: float, initial_pumped_time: float
+    ) -> None:
+        """
+        Calculate the flow rate over time considering diffusion constants and constraints.
+        More versatile law should be implemented from nexo outgassing paper (feb 2020) & https://doi.org/10.1016/S0042-207X(03)00035-6
+        """
+        if unbaked_flow_rate is None or initial_pumped_time is None:
+            raise ValueError(
+                "unbaked_flow_rate and initial_pumped_time must be provided."
+            )
+
+        # Ensure time attribute is not empty or null
+        if not self.time or self.time[0] is None:
+            raise ValueError("Time attribute is not set for the system.")
+
+        # Calculate flow rate for each time point
+        flow_rate = [
+            unbaked_flow_rate * self.area * initial_pumped_time / time
+            for time in self.time[0]
+        ]
+
+        # Append calculated flow rate to the flow_rates attribute
+        self.flow_rates.append(flow_rate)
+
 
 def solve_diffusion_equation(
     time: float, diff: float, thickness: float, conc: float
 ) -> float:
     """
     Solve the diffusion equation over a given time period.
-
-    Args:
-    - time (float): Time over which to solve the equation.
-    - diff (float): Diffusion coefficient.
-    - thickness (float): Thickness of the medium.
-    - conc (float): Initial concentration.
-
-    Returns:
-    - float: Result of the diffusion equation calculation.
     """
     terms = [
         (1.0 / ((2.0 * n + 1.0) ** 2))
@@ -229,16 +251,6 @@ def solve_flow_rate(
 ) -> float:
     """
     Calculate the flow rate of a substance through a medium.
-
-    Args:
-    - time (float): Time over which to calculate the flow rate.
-    - diff (float): Diffusion coefficient.
-    - thickness (float): Thickness of the medium.
-    - conc (float): Concentration of the substance.
-    - area (float): Cross-sectional area of the flow.
-
-    Returns:
-    - float: Calculated flow rate.
     """
     terms = [
         np.exp(-((np.pi * (2.0 * n + 1.0) / thickness) ** 2) * diff * time)
@@ -249,19 +261,15 @@ def solve_flow_rate(
     return sum(terms) * area
 
 
-def get_time_stamps(points, spacing, time_scale="Seconds"):
+def get_time_stamps(
+    points: List[Union[int, float]],
+    spacing: Union[int, float],
+    time_scale: str = "Seconds",
+) -> List[List[float]]:
     """
     Generate a list of lists containing timestamps in seconds.
     Each sublist represents the range from one point to the next,
     incremented by the given spacing value.
-
-    Args:
-    points (list of float): Time points, in the specified time scale, between which timestamps are generated.
-    spacing (float): Increment value in seconds.
-    time_scale (str, optional): Unit of time for points ('Days', 'Hours', 'Seconds'). Defaults to 'Seconds'.
-
-    Returns:
-    list of list of float: Lists of timestamps in seconds.
     """
     scale_factors = {"Days": 86400, "Hours": 3600, "Seconds": 1}
 
@@ -284,7 +292,7 @@ def get_time_stamps(points, spacing, time_scale="Seconds"):
     return timestamps
 
 
-def electron_lifetime(t, M, rho, n0, F, eta, R0, alpha, n_p=0):
+def solve_electron_lifetime(t, M, rho, n0, F, eta, R0, alpha, n_p=0):
     """
     Calculate the electron lifetime.
     From "Screening for Electronegative Impurities".
@@ -339,25 +347,3 @@ def XPM_electron_lifetime_fit(t, C_el, n0, R0, rho, M, n0_error=None, R0_error=N
         return electron_lifetime, electron_lifetime_lower, electron_lifetime_upper
 
     return electron_lifetime
-
-
-def steel_desorption(tau0, E, T, q0, t):
-    """
-    Calculate the steel desorption rate. From "Outgassing Model for Electronegative Impurites in Liquid Xenon for nEXO" 26-02-2020.
-
-    Parameters:
-    - tau0: in seconds, pre-exponential factor for relaxation time
-    - E: in Joules, activation energy
-    - T: in Kelvin, temperature
-    - q0: initial absorbed impurities per unit area
-    - t: in seconds, time
-
-    Returns:
-    - Steel desorption rate J
-    """
-    residence_time = tau0 * np.exp(
-        E / sc.k * T
-    )  # the residence time of an impurity at an absorption site
-    J = q0 / residence_time * np.exp(-t / residence_time)
-
-    return J

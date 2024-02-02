@@ -8,7 +8,6 @@
 # Surface area given in cm^2
 # Thickness given in cm
 # Molar mass given in g/mol
-# Outgassing rate given in mbar.L.s-1.cm-1 (see p89 of Ako's thesis)
 
 Material = {
     "Teflon": {  # http://arxiv.org/abs/1703.09144
@@ -128,6 +127,13 @@ Material = {
             "Activation Energy": 0.47,
         }
     },
+    "Stainless-Steel": {
+        "Oxygen": {
+            "Diffusion Constant": None,
+            "Solubility": None,
+            "Activation Energy": None,
+        },
+    },
 }
 
 System = {
@@ -142,13 +148,12 @@ System = {
             "EXO-Teflon": {"Volume": 0.693, "Area": 9200.0, "Thickness": 0.15},
             "EXO-Acrylic": {"Volume": 0.693, "Area": 9200.0, "Thickness": 2.0},
         },
-        "Stainless Steel": {
+        "Stainless-Steel": {
             "EXO-Stainless-Steel": {
-                "Volume": 0.693,
+                "Volume": None,
                 "Area": 3000.0,
-                "Thickness": 0.15,
-            },  # wrong volume & thickness
-            # 'EXO-Stainless Steel': {'Outgassing': 1e-8, 'Area': 3000.0, 'Thickness': 0.15}, # not working yet
+                "Thickness": None,
+            },
         },
     },
     "nEXO": {
