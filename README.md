@@ -8,7 +8,31 @@ This project delves into detailed studies concerning electronegative impurities,
 
 - `elec_neg_functions.py`: This Python script contains various functions that are used within the notebook. These functions perform calculations, data processing, and analysis related to electronegative impurities.
 
-- `libray.py`: This Python file contains all the various data values that are used within the python functions and the notebook. These values are coming from multiple published papers for the most part of them, and are specified.
+- `libray.json`: This file contains all the various data values that are used within the python functions and the notebook. These values are coming from multiple published papers for the most part of them.
+
+## Data Structure in `library.json`
+
+The `library.json` file includes comprehensive data sets used for analysis, structured into three main categories: `Material`, `System`, and `Gas`. Each category contains specific information relevant to the study of electronegative impurities.
+
+### Material
+This category includes various materials with their respective properties for different solutes. Properties include:
+- `Diffusion Constant`: Given in cm²/s.
+- `Solubility`: Given as a fraction.
+- `Activation Energy`: Given in eV.
+
+The material properties are primarily sourced from the following research papers:
+- [Teflon, Teflon Yale, Viton, and PE1 Properties](http://arxiv.org/abs/1703.09144)
+
+### System
+Describes different systems with attributes such as mass, volume, surface area, and thickness. Each system entry contains:
+- `Xenon Mass`: Given in grams.
+- `Field Factor`: Specific to the system, given in seconds (refer to "Screening for Electronegative Impurities" for more details).
+- Material attributes: `Volume` (liters), `Surface Area` (cm²), `Thickness` (cm).
+
+### Gas
+Provides details about various gases, including:
+- `Abundance in Air`: Fractional representation.
+- `Molar Mass`: Given in g/mol.
 
 ## Getting Started
 

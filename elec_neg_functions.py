@@ -2,8 +2,10 @@
 
 from typing import List, Union, Optional
 import numpy as np
-import scipy.constants as sc
-import library as Lib
+
+# import scipy.constants as sc
+# import library as Lib
+import json
 
 # Constants
 IDEAL_GAS_MOLAR_VOLUME = 22.4  # liter/mol
@@ -15,15 +17,14 @@ GXE_DENSITY = 5.5e-3  # Kg/liter
 
 class Outgassing_setup:
     """
-    This class represents a system with various attributes and methods.
+    This class represents a system with various attributes and methods,
+    extracting data from a JSON file instead of a Python module.
 
     Attributes:
     name (str): The name of the setup.
     material (str): The material of the system.
     solute (str): The solute in the system.
     version (str): The version of the system.
-    constraints (list): The constraints of the system.
-    constraint_index (list): The index of the constraints.
     temperatures (list): The temperatures of the system.
     time (list of list of floats): Timestamps of the system.
     diffusion (float): The diffusion constant of the solute in the material.
@@ -44,44 +45,51 @@ class Outgassing_setup:
         solute: Optional[str] = None,
         version: Optional[str] = None,
     ):
+        # Load data from the JSON file
+        with open("library.json", "r") as file:
+            data = json.load(file)
+
         self.name: str = setup
         self.material: Optional[str] = material
         self.solute: Optional[str] = solute
         self.version: Optional[str] = version
 
-        self.constraints: List = []
-        self.constraint_index: List[int] = []
         self.temperatures: List[Union[int, float]] = []
-        self.time: List[List[float]] = []
         self.diffusion_constants: List[float] = []
 
+        self.time: List[List[float]] = []
         self.impurities: List[List[float]] = []
         self.flow_rates: List[List[float]] = []
 
-        # Retrieve material properties safely
+        # Retrieve material properties safely from JSON data
         if material and solute:
-            material_props = Lib.Material.get(material, {}).get(solute, {})
+            material_props = data["Material"].get(material, {}).get(solute, {})
             self.diffusion: Optional[float] = material_props.get("Diffusion Constant")
             self.solubility: Optional[float] = material_props.get("Solubility")
             self.activation_energy: Optional[float] = material_props.get(
                 "Activation Energy"
             )
 
-        # Retrieve system properties safely
+        # Retrieve system properties safely from JSON data
         if setup and material and version:
-            system_props = Lib.System.get(setup, {}).get(material, {}).get(version, {})
+            system_props = (
+                data["System"].get(setup, {}).get(material, {}).get(version, {})
+            )
             self.volume: float = system_props.get("Volume")
             self.area: float = system_props.get("Area")
             self.thickness: float = system_props.get("Thickness")
 
-        # Retrieve gas properties safely
+        # Retrieve gas properties safely from JSON data
         if solute:
-            gas_props = Lib.Gas.get(solute, {})
+            gas_props = data["Gas"].get(solute, {})
             self.abundance: Optional[float] = gas_props.get("Abundance in Air")
             self.molar_mass: Optional[float] = gas_props.get("Molar Mass")
 
-        # Retrieve Xenon Mass
-        self.xe_mass: Optional[float] = Lib.System.get(setup, {}).get("Xenon Mass")
+        # Retrieve Xenon Mass and Field Factor from JSON data
+        self.xe_mass: Optional[float] = data["System"].get(setup, {}).get("Xenon Mass")
+        self.field_factor: Optional[float] = (
+            data["System"].get(setup, {}).get("Field Factor")
+        )
 
     def __str__(self) -> str:
         """
@@ -230,6 +238,46 @@ class Outgassing_setup:
         # Append calculated flow rate to the flow_rates attribute
         self.flow_rates.append(flow_rate)
 
+    def get_electron_lifetime_vs_time(
+        self,
+        initial_impurities: float,
+        circulation_rate: float,
+        purification_efficiency: float,
+        out_diffusion: float,
+        purifier_output: float = 0,
+    ) -> List[List[float]]:
+        """
+        Calculate the electron lifetime for each timestamp in each sublist of self.time.
+        """
+        if self.xe_mass is None:
+            raise ValueError("Xenon mass (xe_mass) is not set.")
+
+        electron_lifetimes = []
+        for time_segment in self.time:
+            segment_lifetimes = []
+            for timestamp in time_segment:
+                factor_exp = np.exp(
+                    -GXE_DENSITY
+                    * purification_efficiency
+                    * circulation_rate
+                    * timestamp
+                    / self.xe_mass
+                )
+                denominator = initial_impurities * factor_exp + (
+                    (out_diffusion + purifier_output * circulation_rate)
+                    / (purification_efficiency * circulation_rate)
+                ) * (1 - factor_exp)
+
+                if denominator == 0:
+                    segment_lifetimes.append(float("inf"))
+                else:
+                    lifetime = self.field_factor / denominator
+                    segment_lifetimes.append(lifetime)
+
+            electron_lifetimes.append(segment_lifetimes)
+
+        return electron_lifetimes
+
 
 def solve_diffusion_equation(
     time: float, diff: float, thickness: float, conc: float
@@ -293,7 +341,7 @@ def get_time_stamps(
     return timestamps
 
 
-def solve_electron_lifetime(t, M, rho, n0, F, eta, R0, alpha, n_p=0):
+def solve_electron_lifetime(t, M, n0, F, eta, R0, alpha, n_p=0):
     """
     Calculate the electron lifetime.
     From "Screening for Electronegative Impurities".
@@ -312,7 +360,7 @@ def solve_electron_lifetime(t, M, rho, n0, F, eta, R0, alpha, n_p=0):
     Returns:
     - Electron lifetime value
     """
-    factor_exp = np.exp(-rho * eta * F * t / M)
+    factor_exp = np.exp(-GXE_DENSITY * eta * F * t / M)
     denominator = n0 * factor_exp + ((R0 + n_p * F) / (eta * F)) * (1 - factor_exp)
 
     # Guard against division by zero
@@ -322,7 +370,7 @@ def solve_electron_lifetime(t, M, rho, n0, F, eta, R0, alpha, n_p=0):
     return alpha / denominator
 
 
-def XPM_electron_lifetime_fit(t, C_el, n0, R0, M, n0_error=None, R0_error=None):
+def XPM_electron_lifetime_fit(t, C_el, n0, R0, rho, M, n0_error=None, R0_error=None):
     """
     Calculate materials test XPM fit for electron lifetime.
     From "Screening for Electronegative Impurities".
