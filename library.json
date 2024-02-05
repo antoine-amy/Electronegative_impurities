@@ -163,7 +163,7 @@
         "nEXO": {
             "Xenon Mass": 5000000,
             "Field Factor": 0.3,
-            "Field Factor Comment": "Value at EXO-200 drift field",
+            "Comment": "Field Factor value at EXO-200 drift field",
             "Kapton": {
                 "nEXO-Kapton": {
                     "Volume": 0.0625,

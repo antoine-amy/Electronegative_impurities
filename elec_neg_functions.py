@@ -82,6 +82,7 @@ class Outgassing_setup:
         self.field_factor: Optional[float] = (
             data["System"].get(setup, {}).get("Field Factor")
         )
+        self.comment: Optional[str] = data["System"].get(setup, {}).get("Comment")
 
     def __str__(self) -> str:
         """
