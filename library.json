@@ -128,7 +128,6 @@
     "System": {
         "EXO-200": {
             "Xenon Mass": 200000,
-            "Field Factor": 0.3,
             "Teflon": {
                 "EXO-Teflon": {
                     "Volume": 0.693,
@@ -163,6 +162,8 @@
         },
         "nEXO": {
             "Xenon Mass": 5000000,
+            "Field Factor": 0.3,
+            "Field Factor Comment": "Value at EXO-200 drift field",
             "Kapton": {
                 "nEXO-Kapton": {
                     "Volume": 0.0625,
@@ -175,6 +176,13 @@
                     "Volume": 0.0625,
                     "Area": 12500.0,
                     "Thickness": 0.005
+                }
+            },
+            "Stainless-Steel": {
+                "nEXO-Stainless-Steel": {
+                    "Volume": null,
+                    "Area": null,
+                    "Thickness": null
                 }
             }
         },

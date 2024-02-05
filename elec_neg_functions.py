@@ -1,10 +1,7 @@
 """Module providing computing functions."""
 
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Dict, Tuple
 import numpy as np
-
-# import scipy.constants as sc
-# import library as Lib
 import json
 
 # Constants
@@ -17,8 +14,7 @@ GXE_DENSITY = 5.5e-3  # Kg/liter
 
 class Outgassing_setup:
     """
-    This class represents a system with various attributes and methods,
-    extracting data from a JSON file instead of a Python module.
+    This class represents a system with various attributes and methods.
 
     Attributes:
     name (str): The name of the setup.
@@ -245,69 +241,39 @@ class Outgassing_setup:
         purification_efficiency: float,
         out_diffusion: float,
         purifier_output: float = 0,
-    ) -> List[List[float]]:
+        # timestamps: List[float],  # Assuming timestamps are passed as a parameter
+    ) -> Tuple[List[float], Dict[str, float]]:
         """
-        Calculate the electron lifetime for each timestamp in each sublist of self.time.
+        Calculate the electron lifetime for each timestamp in the given list of timestamps.
+        Returns a tuple with the list of electron lifetimes and a dictionary of parameters used.
         """
-        if self.xe_mass is None:
-            raise ValueError("Xenon mass (xe_mass) is not set.")
+        if self.xe_mass is None or self.field_factor is None:
+            raise ValueError("Xenon mass or Field Factor is not initialized.")
 
-        electron_lifetimes = []
-        for time_segment in self.time:
-            segment_lifetimes = []
-            for timestamp in time_segment:
-                factor_exp = np.exp(
-                    -GXE_DENSITY
-                    * purification_efficiency
-                    * circulation_rate
-                    * timestamp
-                    / self.xe_mass
-                )
-                denominator = initial_impurities * factor_exp + (
-                    (out_diffusion + purifier_output * circulation_rate)
-                    / (purification_efficiency * circulation_rate)
-                ) * (1 - factor_exp)
+        electron_lifetimes = [
+            solve_electron_lifetime(
+                initial_impurities,
+                circulation_rate,
+                purification_efficiency,
+                out_diffusion,
+                purifier_output,
+                timestamp,
+                self.xe_mass / 1e3,
+                self.field_factor,
+            )
+            for timestamp in self.time[0]
+        ]
 
-                if denominator == 0:
-                    segment_lifetimes.append(float("inf"))
-                else:
-                    lifetime = self.field_factor / denominator
-                    segment_lifetimes.append(lifetime)
+        # Dictionary of parameters used in the calculation
+        params = {
+            "initial_impurities": initial_impurities,
+            "circulation_rate": circulation_rate,
+            "purification_efficiency": purification_efficiency,
+            "out_diffusion": out_diffusion,
+            "purifier_output": purifier_output,
+        }
 
-            electron_lifetimes.append(segment_lifetimes)
-
-        return electron_lifetimes
-
-
-def solve_diffusion_equation(
-    time: float, diff: float, thickness: float, conc: float
-) -> float:
-    """
-    Solve the diffusion equation over a given time period.
-    """
-    terms = [
-        (1.0 / ((2.0 * n + 1.0) ** 2))
-        * np.exp(-((np.pi * (2.0 * n + 1.0) / thickness) ** 2) * diff * time)
-        * (conc * 8.0 * thickness)
-        / (np.pi**2 * 2.0)
-        for n in range(1000)
-    ]
-    return sum(terms)
-
-
-def solve_flow_rate(
-    time: float, diff: float, thickness: float, conc: float, area: float
-) -> float:
-    """
-    Calculate the flow rate of a substance through a medium.
-    """
-    terms = [
-        np.exp(-((np.pi * (2.0 * n + 1.0) / thickness) ** 2) * diff * time)
-        * (4.0 * conc * diff)
-        / thickness
-        for n in range(1000)
-    ]
-    return sum(terms) * area
+        return electron_lifetimes, params
 
 
 def get_time_stamps(
@@ -341,33 +307,62 @@ def get_time_stamps(
     return timestamps
 
 
-def solve_electron_lifetime(t, M, n0, F, eta, R0, alpha, n_p=0):
+def solve_diffusion_equation(
+    time: float, diff: float, thickness: float, conc: float
+) -> float:
     """
-    Calculate the electron lifetime.
-    From "Screening for Electronegative Impurities".
-
-    Parameters:
-    - t: in seconds, time
-    - M: in kg, LXe mass
-    - rho: in kg/liter, LXe density
-    - n0: in ppb, initial impurity concentration
-    - F: in liter/sec, xenon gas circulation flow rate
-    - eta: purification efficiency
-    - R0: in ppb liter/sec, total out-diffusion rate
-    - alpha: in s, EXO-200 value, field dependant factor
-    - n_p: in ppb, purifier output impurity concentration
-
-    Returns:
-    - Electron lifetime value
+    Solve the diffusion equation over a given time period.
     """
-    factor_exp = np.exp(-GXE_DENSITY * eta * F * t / M)
-    denominator = n0 * factor_exp + ((R0 + n_p * F) / (eta * F)) * (1 - factor_exp)
+    terms = [
+        (1.0 / ((2.0 * n + 1.0) ** 2))
+        * np.exp(-((np.pi * (2.0 * n + 1.0) / thickness) ** 2) * diff * time)
+        * (conc * 8.0 * thickness)
+        / (np.pi**2 * 2.0)
+        for n in range(1000)
+    ]
+    return sum(terms)
 
-    # Guard against division by zero
+
+def solve_flow_rate(
+    time: float, diff: float, thickness: float, conc: float, area: float
+) -> float:
+    """
+    Calculate the flow rate of a substance through a medium.
+    """
+    terms = [
+        np.exp(-((np.pi * (2.0 * n + 1.0) / thickness) ** 2) * diff * time)
+        * (4.0 * conc * diff)
+        / thickness
+        for n in range(1000)
+    ]
+    return sum(terms) * area
+
+
+def solve_electron_lifetime(
+    initial_impurities: float,
+    circulation_rate: float,
+    purification_efficiency: float,
+    out_diffusion: float,
+    purifier_output: float,
+    timestamp: float,
+    xe_mass: float,
+    field_factor: float,
+) -> float:
+    """
+    Calculate the electron lifetime for a given timestamp.
+    """
+    factor_exp = np.exp(
+        -GXE_DENSITY * purification_efficiency * circulation_rate * timestamp / xe_mass
+    )
+    denominator = initial_impurities * factor_exp + (
+        (out_diffusion + purifier_output * circulation_rate)
+        / (purification_efficiency * circulation_rate)
+    ) * (1 - factor_exp)
+
     if denominator == 0:
-        return 0
-
-    return alpha / denominator
+        return float("inf")
+    else:
+        return field_factor / denominator
 
 
 def XPM_electron_lifetime_fit(t, C_el, n0, R0, rho, M, n0_error=None, R0_error=None):
