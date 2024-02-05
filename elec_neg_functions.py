@@ -53,10 +53,6 @@ class Outgassing_setup:
         self.temperatures: List[Union[int, float]] = []
         self.diffusion_constants: List[float] = []
 
-        self.time: List[List[float]] = []
-        self.impurities: List[List[float]] = []
-        self.flow_rates: List[List[float]] = []
-
         # Retrieve material properties safely from JSON data
         if material and solute:
             material_props = data["Material"].get(material, {}).get(solute, {})
@@ -149,18 +145,17 @@ class Outgassing_setup:
                 impurity_mass / self.molar_mass
             ) * AVOGADRO_NUMBER
 
-    def get_impurities_vs_time(self) -> None:
+    def get_impurities_vs_time(self, time: List[List[float]]) -> List[List[float]]:
         """
         Calculate the impurities over time considering diffusion constants and constraints.
         """
         if self.diffusion_constants is None:
             raise ValueError("Diffusion constants are not initialized.")
 
+        impurities = []
         # Use the same time segment for all diffusion constants if only one time sublist
         time_segments = (
-            [self.time[0]] * len(self.diffusion_constants)
-            if len(self.time) == 1
-            else self.time
+            [time[0]] * len(self.diffusion_constants) if len(time) == 1 else time
         )
 
         for diff_constant, time_segment in zip(self.diffusion_constants, time_segments):
@@ -175,18 +170,24 @@ class Outgassing_setup:
                 )
                 segment_impurities.append(current_impurity)
 
-            self.impurities.append(segment_impurities)
+            impurities.append(segment_impurities)
 
-    def get_flow_rate_vs_time(self, units: str = "#") -> None:
+        return impurities
+
+    def get_flow_rate_vs_time(
+        self,
+        time: List[List[float]],
+        impurities: List[List[float]] = [],
+        units: str = "#",
+    ) -> List[List[float]]:
         """
         Calculate the flow rate over time considering diffusion constants and constraints.
         """
-        initial_concentration = [x[0] / (self.volume * 1e3) for x in self.impurities]
+        initial_concentration = [x[0] / (self.volume * 1e3) for x in impurities]
 
+        flow_rates = []
         time_segments = (
-            [self.time[0]] * len(self.diffusion_constants)
-            if len(self.time) == 1
-            else self.time
+            [time[0]] * len(self.diffusion_constants) if len(time) == 1 else time
         )
 
         for diff_constant, temp, time_segment in zip(
@@ -207,11 +208,16 @@ class Outgassing_setup:
 
                 segment_flow_rates.append(flow_rate)
 
-            self.flow_rates.append(segment_flow_rates)
+            flow_rates.append(segment_flow_rates)
+
+        return flow_rates
 
     def get_steel_flow_rate_vs_pumping_time(
-        self, unbaked_flow_rate: float, initial_pumped_time: float
-    ) -> None:
+        self,
+        time: List[List[float]],
+        unbaked_flow_rate: float,
+        initial_pumped_time: float,
+    ) -> List[List[float]]:
         """
         Calculate the flow rate over time considering diffusion constants and constraints.
         More versatile law should be implemented from nexo outgassing paper (feb 2020) & https://doi.org/10.1016/S0042-207X(03)00035-6
@@ -220,22 +226,24 @@ class Outgassing_setup:
             raise ValueError(
                 "unbaked_flow_rate and initial_pumped_time must be provided."
             )
-
+        flow_rates = []
         # Ensure time attribute is not empty or null
-        if not self.time or self.time[0] is None:
+        if not time or time[0] is None:
             raise ValueError("Time attribute is not set for the system.")
 
         # Calculate flow rate for each time point
         flow_rate = [
             unbaked_flow_rate * self.area * initial_pumped_time / time
-            for time in self.time[0]
+            for time in time[0]
         ]
 
         # Append calculated flow rate to the flow_rates attribute
-        self.flow_rates.append(flow_rate)
+        flow_rates.append(flow_rate)
+        return flow_rates
 
     def get_electron_lifetime_vs_time(
         self,
+        time: List[List[float]],
         initial_impurities: float,
         circulation_rate: float,
         purification_efficiency: float,
@@ -261,7 +269,7 @@ class Outgassing_setup:
                 self.xe_mass / 1e3,
                 self.field_factor,
             )
-            for timestamp in self.time[0]
+            for timestamp in time[0]
         ]
 
         # Dictionary of parameters used in the calculation
