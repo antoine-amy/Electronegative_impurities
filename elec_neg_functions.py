@@ -1,6 +1,7 @@
 """Module providing computing functions."""
 
 from typing import List, Union, Optional, Dict, Tuple
+import matplotlib.pyplot as plt
 import numpy as np
 import json
 
@@ -148,22 +149,28 @@ class Outgassing_setup:
 
     def get_impurities_vs_time(self, time: List[List[float]]) -> List[List[float]]:
         """
-        Calculate the impurities over time considering diffusion constants and constraints.
+        Calculate the impurities over time considering diffusion constants.
         """
         if self.diffusion_constants is None:
             raise ValueError("Diffusion constants are not initialized.")
 
         impurities = []
-        # Use the same time segment for all diffusion constants if only one time sublist
+        # Use the same time segment for all temperatures if only one timestamp
         time_segments = (
             [time[0]] * len(self.diffusion_constants) if len(time) == 1 else time
         )
 
-        for diff_constant, time_segment in zip(self.diffusion_constants, time_segments):
+        for i, (diff_constant, time_segment) in enumerate(
+            zip(self.diffusion_constants, time_segments)
+        ):
             segment_impurities = []
-            current_impurity = (
-                self.initial_impurities
-            )  # Local variable for current impurity
+            if (
+                i == 0 or len(time) == 1
+            ):  # For the first segment or if there's only one time segment
+                current_impurity = self.initial_impurities
+            else:
+                # Start with the last impurity value of the previous segment
+                current_impurity = impurities[i - 1][-1]
 
             for timestamp in time_segment:
                 current_impurity = solve_diffusion_equation(
@@ -234,7 +241,9 @@ class Outgassing_setup:
 
         # Calculate flow rate for each time point
         flow_rate = [
-            unbaked_flow_rate * self.area * initial_pumped_time / time
+            solve_steel_flow_rate_vs_pumping_time(
+                unbaked_flow_rate, self.area, initial_pumped_time, time
+            )
             for time in time[0]
         ]
 
@@ -250,7 +259,6 @@ class Outgassing_setup:
         purification_efficiency: float,
         out_diffusion: float,
         purifier_output: float = 0,
-        # timestamps: List[float],  # Assuming timestamps are passed as a parameter
     ) -> Tuple[List[float], Dict[str, float]]:
         """
         Calculate the electron lifetime for each timestamp in the given list of timestamps.
@@ -347,6 +355,20 @@ def solve_flow_rate(
     return sum(terms) * area
 
 
+def solve_steel_flow_rate_vs_pumping_time(
+    unbaked_flow_rate: float,
+    area: float,
+    initial_pumped_time: float,
+    time: float,
+) -> float:
+    """
+    Calculate the steel flow rate for a given time.
+    """
+    flow_rate = unbaked_flow_rate * area * initial_pumped_time / time
+
+    return flow_rate
+
+
 def solve_electron_lifetime(
     initial_impurities: float,
     circulation_rate: float,
@@ -374,31 +396,74 @@ def solve_electron_lifetime(
         return field_factor / denominator
 
 
-def XPM_electron_lifetime_fit(t, C_el, n0, R0, rho, M, n0_error=None, R0_error=None):
+def plot_data(
+    fig_size: Tuple[int, int],
+    x_label: str,
+    y_label: str,
+    data_sets: List[Tuple[List[float], List[float], str]],
+    x_scale: Optional[str] = None,
+    y_scale: Optional[str] = None,
+    time_unit: str = "Seconds",
+) -> None:
+    plt.figure(figsize=fig_size)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+
+    if x_scale:
+        plt.xscale(x_scale)
+    if y_scale:
+        plt.yscale(y_scale)
+
+    plt.grid(which="both", linestyle="--", linewidth=0.5, color="gray")
+    plt.minorticks_on()
+
+    # Convert time to the specified unit
+    time_conversion_factor = 1
+    if time_unit == "Days":
+        time_conversion_factor = 86400  # Seconds in a day
+
+    for time_data, data, label in data_sets:
+        adjusted_time_data = [t / time_conversion_factor for t in time_data]
+        plt.plot(adjusted_time_data, data, label=label)
+
+    plt.legend()
+    plt.show()
+
+
+def XPM_electron_lifetime_fit(
+    t: float,
+    c_el: float,
+    n0: float,
+    r0: float,
+    m: float,
+    n0_error: Optional[float] = None,
+    r0_error: Optional[float] = None,
+) -> Union[float, Tuple[float, float, float]]:
     """
     Calculate materials test XPM fit for electron lifetime.
     From "Screening for Electronegative Impurities".
 
     Parameters:
-    - t: in seconds, time
-    - C_el: in ppb/μs
-    - n0: in ppb, initial impurity concentration
-    - R0: in ppb liter/sec, total out-diffusion rate
-    - M: in kg, LXe mass
-    - n0_error (optional): error associated with n0
-    - R0_error (optional): error associated with R0
+    - t (float): Time in seconds.
+    - c_el (float): Electron lifetime constant in ppb/μs.
+    - n0 (float): Initial impurity concentration in ppb.
+    - r0 (float): Total out-diffusion rate in ppb liter/sec.
+    - m (float): LXe mass in kg.
+    - n0_error (Optional[float]): Error associated with n0.
+    - r0_error (Optional[float]): Error associated with r0.
 
     Returns:
-    - Main electron lifetime, and (optionally) lower and upper bounds due to errors
+    - float or Tuple[float, float, float]: Main electron lifetime, and optionally
+      lower and upper bounds due to errors.
     """
-    electron_lifetime = C_el / (n0 + R0 * GXE_DENSITY * t / M)
+    electron_lifetime = c_el / (n0 + r0 * GXE_DENSITY * t / m)
 
-    if n0_error is not None and R0_error is not None:
-        electron_lifetime_upper = C_el / (
-            n0 - n0_error + (R0 - R0_error) * GXE_DENSITY * t / M
+    if n0_error is not None and r0_error is not None:
+        electron_lifetime_upper = c_el / (
+            n0 - n0_error + (r0 - r0_error) * GXE_DENSITY * t / m
         )
-        electron_lifetime_lower = C_el / (
-            n0 + n0_error + (R0 + R0_error) * GXE_DENSITY * t / M
+        electron_lifetime_lower = c_el / (
+            n0 + n0_error + (r0 + r0_error) * GXE_DENSITY * t / m
         )
         return electron_lifetime, electron_lifetime_lower, electron_lifetime_upper
 
